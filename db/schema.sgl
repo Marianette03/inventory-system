@@ -1,0 +1,91 @@
+CREATE DATABASE IF NOT EXISTS inventory_db;
+USE inventory_db;
+
+CREATE TABLE categories (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE units (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    unit_name VARCHAR(20) NOT NULL UNIQUE,
+    abbreviation VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE suppliers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(100),
+    email VARCHAR(255),
+    phone VARCHAR(20),
+    address TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE products (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category_id INT,
+    unit_id INT,
+    supplier_id INT,
+    sku VARCHAR(50) UNIQUE,
+    barcode VARCHAR(100) UNIQUE,
+    quantity INT DEFAULT 0,
+    min_stock_level INT DEFAULT 0,
+    max_stock_level INT DEFAULT 0,
+    cost_price DECIMAL(10, 2) DEFAULT 0.00,
+    selling_price DECIMAL(10, 2) DEFAULT 0.00,
+    location VARCHAR(100),
+    expiry_date DATE,
+    batch_number VARCHAR(50),
+    status ENUM('active', 'inactive', 'discontinued') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE stock_movements (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    product_id INT NOT NULL,
+    movement_type ENUM('in', 'out', 'adjustment', 'transfer') NOT NULL,
+    quantity INT NOT NULL,
+    reference_number VARCHAR(50),
+    reason VARCHAR(255),
+    user_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+CREATE TABLE inventory_alerts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    product_id INT NOT NULL,
+    alert_type ENUM('low_stock', 'out_of_stock', 'expiring_soon', 'expired') NOT NULL,
+    message TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+-- Insert default categories
+INSERT INTO categories (name, description) VALUES
+('Electronics', 'Electronic devices and components'),
+('Hardware', 'Computer hardware and peripherals'),
+('Software', 'Software licenses and digital products'),
+('Accessories', 'Various accessories and peripherals'),
+('Consumables', 'Consumable items and supplies');
+
+-- Insert default units
+INSERT INTO units (unit_name, abbreviation) VALUES
+('Pieces', 'pcs'),
+('Kilograms', 'kg'),
+('Liters', 'L'),
+('Boxes', 'box'),
+('Meters', 'm'),
+('Packets', 'pkt'),
+('Sets', 'set');

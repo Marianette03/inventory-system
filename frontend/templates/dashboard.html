@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+{% block content %}
+<header style="margin-bottom: 30px;">
+    <h1><i class='bx bx-tachometer'></i> System Overview</h1>
+    <p style="color: var(--text-dim); font-size: 0.9rem;">Real-time inventory metrics and system status.</p>
+</header>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 40px;">
+    <div class="card stat-card">
+        <div class="stat-icon">
+            <i class='bx bx-package'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: var(--electric-cyan); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Total Products</h3>
+            <p class="stat-value" style="font-size: 2.2rem; font-weight: bold; margin-top: 10px;">{{ total_products }}</p>
+        </div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-icon">
+            <i class='bx bx-category'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: var(--electric-cyan); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Categories</h3>
+            <p style="font-size: 2.2rem; font-weight: bold; margin-top: 10px;">{{ total_categories }}</p>
+        </div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-icon">
+            <i class='bx bx-truck'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: var(--electric-cyan); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Suppliers</h3>
+            <p style="font-size: 2.2rem; font-weight: bold; margin-top: 10px;">{{ total_suppliers }}</p>
+        </div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-icon">
+            <i class='bx bx-money'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: var(--electric-cyan); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Total Value</h3>
+            <p style="font-size: 1.8rem; font-weight: bold; margin-top: 10px;">₱{{ total_value }}</p>
+        </div>
+    </div>
+    <div class="card stat-card alert-card">
+        <div class="stat-icon">
+            <i class='bx bx-bell'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: #ff4d4d; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Active Alerts</h3>
+            <p class="stat-value alert-count" style="font-size: 2.2rem; font-weight: bold; margin-top: 10px; color: #ff4d4d;">{{ total_alerts }}</p>
+        </div>
+    </div>
+    <div class="card stat-card warning-card">
+        <div class="stat-icon">
+            <i class='bx bx-error-triangle'></i>
+        </div>
+        <div class="stat-content">
+            <h3 style="color: #ffa500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Low Stock</h3>
+            <p class="stat-value" style="font-size: 2.2rem; font-weight: bold; margin-top: 10px; color: #ffa500;">{{ low_stock_count }}</p>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="font-size: 1.2rem; color: var(--electric-cyan);"><i class='bx bx-history'></i> Recent Activity</h2>
+            <span style="font-size: 0.7rem; color: var(--text-dim);">Live Feed</span>
+        </div>
+        <div class="activity-log">
+            {% if recent_movements %}
+                {% for movement in recent_movements %}
+                <div class="activity-item">
+                    <div class="activity-time">{{ movement.created_at.strftime('%H:%M') }}</div>
+                    <div class="activity-content">
+                        <span class="activity-type {{ 'in' if movement.movement_type == 'in' else 'out' }}">
+                            {{ movement.movement_type.upper() }}
+                        </span>
+                        <span class="activity-product">{{ movement.product_name }}</span>
+                        <span class="activity-quantity">({{ movement.quantity }})</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: var(--text-dim); text-align: center; padding: 20px;">No recent activity</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="font-size: 1.2rem; color: var(--electric-cyan);"><i class='bx bx-bell'></i> System Alerts</h2>
+            <span style="font-size: 0.7rem; color: var(--text-dim);">Unread</span>
+        </div>
+        <div class="alerts-list">
+            {% if alerts %}
+                {% for alert in alerts %}
+                <div class="alert-item {{ alert.alert_type }}" data-alert-id="{{ alert.id }}">
+                    <div class="alert-icon">
+                        {% if alert.alert_type == 'low_stock' %}
+                            <i class='bx bx-error-triangle'></i>
+                        {% elif alert.alert_type == 'out_of_stock' %}
+                            <i class='bx bx-x-circle'></i>
+                        {% else %}
+                            <i class='bx bx-info-circle'></i>
+                        {% endif %}
+                    </div>
+                    <div class="alert-content">
+                        <p>{{ alert.message }}</p>
+                        <small>{{ alert.created_at.strftime('%m/%d %H:%M') }}</small>
+                    </div>
+                    <button class="alert-dismiss" onclick="markAlertRead({{ alert.id }})">
+                        <i class='bx bx-x'></i>
+                    </button>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: var(--text-dim); text-align: center; padding: 20px;">No active alerts</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="quick-actions" style="margin-top: 30px;">
+    <h2 style="font-size: 1.2rem; color: var(--electric-cyan); margin-bottom: 20px;"><i class='bx bx-zap'></i> Quick Actions</h2>
+    <div class="action-buttons">
+        <a href="{{ url_for('add_product') }}" class="btn-primary">
+            <i class='bx bx-plus'></i> Add Product
+        </a>
+        <a href="{{ url_for('inventory') }}?low_stock=1" class="btn-secondary">
+            <i class='bx bx-error-triangle'></i> View Low Stock
+        </a>
+        <a href="{{ url_for('suppliers') }}" class="btn-secondary">
+            <i class='bx bx-truck'></i> Suppliers
+        </a>
+        <a href="{{ url_for('inventory') }}" class="btn-secondary">
+            <i class='bx bx-package'></i> All Products
+        </a>
+    </div>
+</div>
+{% endblock %}

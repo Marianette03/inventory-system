@@ -1,0 +1,228 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <h1><i class='bx bx-category'></i> SYSTEM_CLASSES</h1>
+    <button class="btn-primary" onclick="showAddForm()">
+        <i class='bx bx-plus'></i> NEW_CATEGORY
+    </button>
+</div>
+
+<div id="addForm" class="card" style="display:none; margin-bottom: 30px; border: 1px solid var(--electric-cyan);">
+    <form action="/categories" method="POST">
+        <h3 style="margin-bottom: 15px;"><i class='bx bx-plus-circle'></i> INITIALIZE_CATEGORY</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="cat_name">Category Name *</label>
+                <input type="text" id="cat_name" name="cat_name" placeholder="e.g., Electronics, Hardware, Software" required
+                       style="width: 100%; padding: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--cobalt-blue);">
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" placeholder="Optional description..."
+                          style="width: 100%; padding: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--cobalt-blue); min-height: 80px; resize: vertical;"></textarea>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">SAVE_CLASS</button>
+            <button type="button" onclick="hideAddForm()" class="btn-secondary" style="background:none; border:1px solid var(--text-dim); color:var(--text-dim); margin-left:10px; cursor:pointer;">CANCEL</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>CATEGORY_NAME</th>
+                    <th>DESCRIPTION</th>
+                    <th>PRODUCTS_COUNT</th>
+                    <th>CREATED</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cat in categories %}
+                <tr>
+                    <td style="color: var(--electric-cyan); font-family: monospace; font-weight: bold;">
+                        #CAT-{{ cat.id }}
+                    </td>
+                    <td>
+                        <strong>{{ cat.name }}</strong>
+                    </td>
+                    <td>
+                        <span style="color: var(--text-dim);">
+                            {{ cat.description or 'No description' }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="count-badge">{{ cat.product_count or 0 }}</span>
+                    </td>
+                    <td style="font-family: monospace; font-size: 0.85rem;">
+                        {{ cat.created_at.strftime('%Y-%m-%d') if cat.created_at else 'N/A' }}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn-icon edit-btn" onclick="editCategory({{ cat.id }}, '{{ cat.name | escapejs }}', '{{ cat.description or '' | escapejs }}')" title="Edit">
+                                <i class='bx bx-edit'></i>
+                            </button>
+                            <button class="btn-icon delete-btn" onclick="deleteCategory({{ cat.id }}, '{{ cat.name | escapejs }}', {{ cat.product_count or 0 }})" title="Delete">
+                                <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not categories %}
+    <div class="empty-state">
+        <i class='bx bx-category' style="font-size: 3rem; color: var(--text-dim); margin-bottom: 20px;"></i>
+        <h3>No categories found</h3>
+        <p style="color: var(--text-dim);">Create your first category to organize your products.</p>
+        <button onclick="showAddForm()" class="btn-primary" style="margin-top: 20px;">
+            <i class='bx bx-plus'></i> Add Category
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 30px; width: 90%; max-width: 600px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 15px;">
+            <h3 style="color: var(--electric-cyan); margin: 0;">Edit Category</h3>
+            <span class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('editModal').style.display='none'; return false;">&times;</span>
+        </div>
+        <form id="editForm" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+            <input type="hidden" id="editCategoryId" name="category_id">
+            <div class="form-group">
+                <label for="editName" style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Category Name *</label>
+                <input type="text" id="editName" name="name" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+            </div>
+            <div class="form-group">
+                <label for="editDescription" style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Description</label>
+                <textarea id="editDescription" name="description" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px; resize: vertical;"></textarea>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                <button type="button" class="btn-secondary" onclick="document.getElementById('editModal').style.display='none'; return false;">Cancel</button>
+                <button type="submit" class="btn-primary">Update Category</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 2px solid #ff4d4d; border-radius: 12px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 77, 77, 0.2); padding-bottom: 15px;">
+            <h3 style="color: #ff4d4d; margin: 0;">Confirm Delete</h3>
+            <span class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('deleteModal').style.display='none'; return false;">&times;</span>
+        </div>
+        <div class="modal-body" style="margin-bottom: 25px;">
+            <p style="color: var(--text-main); margin-bottom: 10px;">Are you sure you want to delete category "<span id="deleteCategoryName" style="font-weight: bold; color: var(--electric-cyan);"></span>"?</p>
+            <p id="productWarning" style="color: #ff4d4d; font-size: 0.9rem; display: none;">Warning: This category contains <span id="productCount"></span> products. Deleting it will remove the category association from these products.</p>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 15px; border-top: 1px solid rgba(255, 77, 77, 0.2);">
+            <button type="button" class="btn-secondary" onclick="document.getElementById('deleteModal').style.display='none'; return false;">Cancel</button>
+            <form id="deleteForm" method="POST" style="margin: 0;">
+                <button type="submit" class="btn-danger">Delete Category</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showAddForm() {
+    document.getElementById('addForm').style.display = 'block';
+    document.getElementById('cat_name').focus();
+}
+
+function hideAddForm() {
+    document.getElementById('addForm').style.display = 'none';
+    document.getElementById('cat_name').value = '';
+    document.getElementById('description').value = '';
+}
+
+function editCategory(id, name, description) {
+    document.getElementById('editCategoryId').value = id;
+    document.getElementById('editName').value = name;
+    document.getElementById('editDescription').value = description;
+    document.getElementById('editForm').action = `/categories/edit/${id}`;
+    document.getElementById('editModal').style.display = 'flex';
+}
+
+function deleteCategory(id, name, productCount) {
+    document.getElementById('deleteCategoryName').textContent = name;
+    document.getElementById('deleteForm').action = `/categories/delete/${id}`;
+
+    const warning = document.getElementById('productWarning');
+    const count = document.getElementById('productCount');
+
+    if (productCount > 0) {
+        warning.style.display = 'block';
+        count.textContent = productCount;
+    } else {
+        warning.style.display = 'none';
+    }
+
+    document.getElementById('deleteModal').style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Setup modal close buttons - close only their parent modal
+    const editModalClose = document.querySelectorAll('#editModal .modal-close');
+    editModalClose.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('editModal').style.display = 'none';
+        });
+    });
+
+    const deleteModalClose = document.querySelectorAll('#deleteModal .modal-close');
+    deleteModalClose.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('deleteModal').style.display = 'none';
+        });
+    });
+
+    // Close modals when clicking outside on the background
+    const editModal = document.getElementById('editModal');
+    const deleteModal = document.getElementById('deleteModal');
+
+    editModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    deleteModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    // Prevent clicks inside modal content from closing the modal
+    const editModalContent = editModal.querySelector('.modal-content');
+    const deleteModalContent = deleteModal.querySelector('.modal-content');
+
+    if (editModalContent) {
+        editModalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+
+    if (deleteModalContent) {
+        deleteModalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+});
+</script>
+{% endblock %}

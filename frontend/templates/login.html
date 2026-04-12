@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>INVENTORY_SYS | Admin Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body style="display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+    <div class="card" style="width: 350px; text-align: center;">
+        <h2 style="color: var(--electric-cyan); margin-bottom: 10px;">ADMIN_ACCESS</h2>
+        <p style="color: var(--text-dim); font-size: 0.8rem; margin-bottom: 30px;">INVENTORY_SYS</p>
+        
+        <form action="/login" method="POST">
+            <input type="text" name="username" placeholder="ADMIN_ID" required 
+                   style="width: 100%; padding: 12px; margin-bottom: 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white;">
+            
+            <input type="password" name="password" placeholder="ACCESS_KEY" required 
+                   style="width: 100%; padding: 12px; margin-bottom: 25px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white;">
+            
+            <button type="submit" class="btn-primary" style="width: 100%;">AUTHENTICATE</button>
+        </form>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <p style="color: #ff4d4d; margin-top: 20px; font-size: 0.8rem;">{{ messages[0] }}</p>
+          {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,223 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <h1><i class='bx bx-truck'></i> Suppliers</h1>
+    <a href="{{ url_for('add_supplier') }}" class="btn-primary" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+        <i class='bx bx-plus'></i> Add Supplier
+    </a>
+</div>
+
+{% if suppliers %}
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Contact Person</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for supplier in suppliers %}
+                <tr>
+                    <td><strong>{{ supplier.name }}</strong></td>
+                    <td>{{ supplier.contact_person or 'N/A' }}</td>
+                    <td>{{ supplier.email or 'N/A' }}</td>
+                    <td>{{ supplier.phone or 'N/A' }}</td>
+                    <td>{{ supplier.address or 'N/A' }}</td>
+                    <td>
+                        <div class="action-buttons" style="display: flex; gap: 10px;">
+                            <button class="btn-icon" onclick="viewSupplier({{ supplier.id }}, '{{ supplier.name | escapejs }}', '{{ supplier.contact_person or '' | escapejs }}', '{{ supplier.email or '' | escapejs }}', '{{ supplier.phone or '' | escapejs }}', '{{ supplier.address or '' | escapejs }}')" title="View" style="background: none; border: none; cursor: pointer; color: var(--electric-cyan); font-size: 1.2rem;">
+                            <i class='bx bx-show'></i>
+                            </button>
+                            <button class="btn-icon" onclick="editSupplier({{ supplier.id }}, '{{ supplier.name | escapejs }}', '{{ supplier.contact_person or '' | escapejs }}', '{{ supplier.email or '' | escapejs }}', '{{ supplier.phone or '' | escapejs }}', '{{ supplier.address or '' | escapejs }}')" title="Edit" style="background: none; border: none; cursor: pointer; color: var(--electric-cyan); font-size: 1.2rem;">
+                            <i class='bx bx-edit'></i>
+                            </button>
+                            <button class="btn-icon" onclick="deleteSupplier({{ supplier.id }}, '{{ supplier.name | escapejs }}')" title="Delete" style="background: none; border: none; cursor: pointer; color: #ff4d4d; font-size: 1.2rem;">
+                            <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card" style="text-align: center; padding: 60px 30px;">
+    <i class='bx bx-truck' style="font-size: 3rem; color: var(--text-dim); margin-bottom: 20px;"></i>
+    <h3>No suppliers found</h3>
+    <p style="color: var(--text-dim); margin-bottom: 20px;">Start by adding your first supplier</p>
+    <a href="{{ url_for('add_supplier') }}" class="btn-primary">
+        <i class='bx bx-plus'></i> Add First Supplier
+    </a>
+</div>
+{% endif %}
+
+
+<!-- View Modal -->
+<div id="viewModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: var(--electric-cyan); margin: 0;">Supplier Details</h3>
+            <button type="button" class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        <hr style="border: none; border-bottom: 1px solid rgba(0, 212, 255, 0.2); margin: 20px 0;">
+        <div style="margin-bottom: 20px;">
+            <p><strong style="color: var(--electric-cyan);">Name:</strong> <span id="view_name" style="color: var(--text-main);"></span></p>
+            <p><strong style="color: var(--electric-cyan);">Contact Person:</strong> <span id="view_contact" style="color: var(--text-main);"></span></p>
+            <p><strong style="color: var(--electric-cyan);">Email:</strong> <span id="view_email" style="color: var(--text-main);"></span></p>
+            <p><strong style="color: var(--electric-cyan);">Phone:</strong> <span id="view_phone" style="color: var(--text-main);"></span></p>
+            <p><strong style="color: var(--electric-cyan);">Address:</strong> <span id="view_address" style="color: var(--text-main);"></span></p>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 30px;">
+            <button type="button" class="btn-secondary modal-close" style="cursor: pointer;">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 30px; width: 90%; max-width: 600px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: var(--electric-cyan); margin: 0;">Edit Supplier</h3>
+            <button type="button" class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        <hr style="border: none; border-bottom: 1px solid rgba(0, 212, 255, 0.2); margin: 20px 0;">
+        <form id="editForm" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Supplier Name *</label>
+                <input type="text" id="edit_name" name="name" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+            </div>
+            <div>
+                <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Contact Person</label>
+                <input type="text" id="edit_contact" name="contact_person" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Email</label>
+                    <input type="email" id="edit_email" name="email" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+                </div>
+                <div>
+                    <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Phone</label>
+                    <input type="text" id="edit_phone" name="phone" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+                </div>
+            </div>
+            <div>
+                <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Address</label>
+                <textarea id="edit_address" name="address" rows="3" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px; resize: vertical;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="submit" class="btn-primary">Update Supplier</button>
+                <button type="button" class="btn-secondary modal-close" style="cursor: pointer;">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 2px solid #ff4d4d; border-radius: 12px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: #ff4d4d; margin: 0;">Confirm Delete</h3>
+            <button type="button" class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        <hr style="border: none; border-bottom: 1px solid rgba(255, 77, 77, 0.2); margin: 20px 0;">
+        <div style="margin-bottom: 25px;">
+            <p style="color: var(--text-main); margin-bottom: 10px;">Are you sure you want to delete supplier "<span id="supplierName" style="font-weight: bold; color: var(--electric-cyan);"></span>"?</p>
+            <p style="color: #ff4d4d; font-size: 0.9rem;"><i class='bx bx-error-triangle'></i> This action cannot be undone.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary modal-close" style="cursor: pointer;">Cancel</button>
+            <form id="deleteForm" method="POST" style="margin: 0;">
+                <button type="submit" style="background: #ff4d4d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">Delete Supplier</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function hideModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function editSupplier(id, name, contact, email, phone, address) {
+    const form = document.getElementById('editForm');
+    form.action = `/suppliers/edit/${id}`;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_contact').value = contact;
+    document.getElementById('edit_email').value = email;
+    document.getElementById('edit_phone').value = phone;
+    document.getElementById('edit_address').value = address;
+    showModal('editModal');
+}
+
+function deleteSupplier(id, name) {
+    document.getElementById('supplierName').textContent = name;
+    document.getElementById('deleteForm').action = `/suppliers/delete/${id}`;
+    showModal('deleteModal');
+}
+
+function viewSupplier(id, name, contact, email, phone, address) {
+    document.getElementById('view_name').textContent = name || 'N/A';
+    document.getElementById('view_contact').textContent = contact || 'N/A';
+    document.getElementById('view_email').textContent = email || 'N/A';
+    document.getElementById('view_phone').textContent = phone || 'N/A';
+    document.getElementById('view_address').textContent = address || 'N/A';
+    showModal('viewModal');
+}
+
+// Setup modal close buttons
+const supplierModalCloseButtons = document.querySelectorAll('#viewModal .modal-close, #editModal .modal-close, #deleteModal .modal-close');
+supplierModalCloseButtons.forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const modal = this.closest('.modal');
+        if (modal) modal.style.display = 'none';
+    });
+});
+
+// Setup modal cancel buttons (btn-secondary inside modals)
+const supplierCancelButtons = document.querySelectorAll('#viewModal .btn-secondary, #editModal .btn-secondary, #deleteModal .btn-secondary');
+supplierCancelButtons.forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        // Only close if it's not a form submit button
+        if (this.type !== 'submit') {
+            e.preventDefault();
+            e.stopPropagation();
+            const modal = this.closest('.modal');
+            if (modal) modal.style.display = 'none';
+        }
+    });
+});
+
+// Close modal when clicking outside (on the modal background)
+window.addEventListener('click', function(event) {
+    ['viewModal', 'editModal', 'deleteModal'].forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal && event.target === modal) {
+            event.stopPropagation();
+            modal.style.display = 'none';
+        }
+    });
+});
+
+
+</script>
+{% endblock %}
