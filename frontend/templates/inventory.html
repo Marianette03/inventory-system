@@ -1,0 +1,209 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <h1><i class='bx bx-package'></i> Inventory Management</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('add_product') }}" class="btn-primary">
+            <i class='bx bx-plus'></i> Add Product
+        </a>
+        <a href="{{ url_for('export_inventory') }}" class="btn-secondary">
+            <i class='bx bx-download'></i> Export
+        </a>
+    </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="filters-section card" style="margin-bottom: 30px; padding: 20px;">
+    <form method="GET" action="{{ url_for('inventory') }}" class="filters-form">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="search">Search Products:</label>
+                <input type="text" id="search" name="search" value="{{ search }}"
+                       placeholder="Product name, SKU, or barcode..." style="flex: 1;">
+            </div>
+            <div class="filter-group">
+                <label for="category">Category:</label>
+                <select id="category" name="category">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {{ 'selected' if selected_category and cat.id|string == selected_category else '' }}>
+                        {{ cat.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="low_stock" value="1" {{ 'checked' if low_stock else '' }}>
+                    Show only low stock items
+                </label>
+            </div>
+            <div class="filter-actions">
+                <button type="submit" class="btn-secondary">
+                    <i class='bx bx-search'></i> Filter
+                </button>
+                <a href="{{ url_for('inventory') }}" class="btn-link">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table id="inventory-table">
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Product Name</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Cost Price</th>
+                    <th>Selling Price</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr class="{{ 'low-stock' if product.quantity <= product.min_stock_level else '' }}">
+                    <td style="color: var(--electric-cyan); font-family: monospace; font-weight: bold;">
+                        {{ product.sku }}
+                    </td>
+                    <td>
+                        <div class="product-info">
+                            <strong>{{ product.name }}</strong>
+                            {% if product.barcode %}
+                            <small style="color: var(--text-dim);">Barcode: {{ product.barcode }}</small>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="category-badge">{{ product.category_name or 'Uncategorized' }}</span>
+                    </td>
+                    <td>
+                        <span class="quantity {{ 'low-quantity' if product.quantity <= product.min_stock_level else '' }}">
+                            {{ product.quantity }}
+                        </span>
+                        {% if product.quantity <= product.min_stock_level %}
+                        <i class='bx bx-error-triangle' style="color: #ff4d4d; margin-left: 5px;" title="Low stock"></i>
+                        {% endif %}
+                    </td>
+                    <td>{{ product.unit_name }}</td>
+                    <td>₱{{ "%.2f"|format(product.cost_price) }}</td>
+                    <td>₱{{ "%.2f"|format(product.selling_price) }}</td>
+                    <td>
+                        <span class="status-badge {{ product.status or 'active' }}">
+                            {{ (product.status or 'active').title() }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('edit_product', product_id=product.id) }}" class="btn-icon" title="Edit">
+                                <i class='bx bx-edit'></i>
+                            </a>
+                            <a href="{{ url_for('stock_adjustment', product_id=product.id) }}" class="btn-icon" title="Adjust Stock">
+                                <i class='bx bx-transfer'></i>
+                            </a>
+                            <button class="btn-icon delete-btn" onclick="deleteProduct({{ product.id }}, '{{ product.name | escapejs }}')" title="Delete">
+                                <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not products %}
+    <div class="empty-state">
+        <i class='bx bx-package' style="font-size: 3rem; color: var(--text-dim); margin-bottom: 20px;"></i>
+        <h3>No products found</h3>
+        <p style="color: var(--text-dim);">Try adjusting your filters or add some products to get started.</p>
+        <a href="{{ url_for('add_product') }}" class="btn-primary" style="margin-top: 20px;">
+            <i class='bx bx-plus'></i> Add Your First Product
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--glass-blue); border: 2px solid #ff4d4d; border-radius: 12px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: #ff4d4d; margin: 0;">Confirm Delete</h3>
+            <button type="button" class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('deleteModal').style.display = 'none';">&times;</button>
+        </div>
+        <hr style="border: none; border-bottom: 1px solid rgba(255, 77, 77, 0.2); margin: 20px 0;">
+        <div style="margin-bottom: 25px;">
+            <p style="color: var(--text-main); margin-bottom: 10px;">Are you sure you want to delete "<span id="deleteProductName" style="font-weight: bold; color: var(--electric-cyan);"></span>"?</p>
+            <p style="color: #ff4d4d; font-size: 0.9rem;"><i class='bx bx-error-triangle'></i> This action cannot be undone.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary" style="cursor: pointer;" onclick="document.getElementById('deleteModal').style.display = 'none';">Cancel</button>
+            <form id="deleteForm" method="POST" style="margin: 0;">
+                <button type="submit" style="background: #ff4d4d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">Delete Product</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function deleteProduct(productId, productName) {
+    document.getElementById('deleteProductName').textContent = productName;
+    document.getElementById('deleteForm').action = `/inventory/delete/${productId}`;
+    document.getElementById('deleteModal').style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Modal close functionality
+    const modal = document.getElementById('deleteModal');
+    
+    // Setup close buttons
+    const closeBtns = document.querySelectorAll('#deleteModal .modal-close');
+    closeBtns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            modal.style.display = 'none';
+        });
+    });
+
+    // Setup cancel button
+    const cancelBtn = document.querySelector('#deleteModal .btn-secondary');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            modal.style.display = 'none';
+        });
+    }
+
+    // Close modal when clicking outside background
+    modal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    // Prevent clicks inside modal content from closing the modal
+    const modalContent = modal.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+
+    // Auto-submit search on enter
+    const searchInput = document.getElementById('search');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.target.closest('form').submit();
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,224 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <h1><i class='bx bx-ruler'></i> Measurement Units</h1>
+    <button class="btn-primary" onclick="showAddForm()">
+        <i class='bx bx-plus'></i> Add Unit
+    </button>
+</div>
+
+<div id="addForm" class="card" style="display:none; margin-bottom: 30px; border: 1px solid var(--electric-cyan);">
+    <form action="/units" method="POST">
+        <h3 style="margin-bottom: 15px;"><i class='bx bx-plus-circle'></i> New Measurement Unit</h3>
+        <div class="form-row" style="display: flex; gap: 20px;">
+            <div class="form-group" style="flex: 1;">
+                <label for="unit_name">Unit Name *</label>
+                <input type="text" id="unit_name" name="unit_name" placeholder="e.g., Pieces, Kilograms" required
+                       style="width: 100%; padding: 10px; margin-top: 5px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--cobalt-blue);">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label for="abbreviation">Abbreviation</label>
+                <input type="text" id="abbreviation" name="abbreviation" placeholder="e.g., pcs, kg"
+                       style="width: 100%; padding: 10px; margin-top: 5px; background: rgba(0,0,0,0.2); color: white; border: 1px solid var(--cobalt-blue);">
+            </div>
+        </div>
+        <div class="form-actions" style="margin-top: 15px;">
+            <button type="submit" class="btn-primary">Register Unit</button>
+            <button type="button" onclick="hideAddForm()" class="btn-secondary" style="background:none; border:1px solid var(--text-dim); color:var(--text-dim); margin-left:10px; cursor:pointer; padding: 10px 20px;">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="text-align: left; border-bottom: 1px solid var(--cobalt-blue);">
+                    <th style="padding: 12px;">ID</th>
+                    <th>Unit Name</th>
+                    <th>Abbreviation</th>
+                    <th>Products Using</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for unit in units %}
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 12px; color: var(--electric-cyan); font-family: monospace; font-weight: bold;">
+                        #UNT-{{ unit.id }}
+                    </td>
+                    <td><strong>{{ unit.unit_name }}</strong></td>
+                    <td>
+                        <span style="color: var(--text-dim); font-family: monospace;">
+                            {{ unit.abbreviation or 'N/A' }}
+                        </span>
+                    </td>
+                    <td><span class="count-badge">{{ unit.product_count or 0 }}</span></td>
+                    <td style="font-family: monospace; font-size: 0.85rem;">
+                        {{ unit.created_at.strftime('%Y-%m-%d') if unit.created_at else 'N/A' }}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn-icon edit-btn" onclick="editUnit('{{ unit.id }}', '{{ unit.unit_name | escapejs }}', '{{ unit.abbreviation or '' | escapejs }}')" title="Edit">
+                                <i class='bx bx-edit'></i>
+                            </button>
+                            <button class="btn-icon delete-btn" onclick="deleteUnit('{{ unit.id }}', '{{ unit.unit_name | escapejs }}', {{ unit.product_count or 0 }})" title="Delete">
+                                <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not units %}
+    <div class="empty-state" style="text-align: center; padding: 40px;">
+        <i class='bx bx-ruler' style="font-size: 3rem; color: var(--text-dim); margin-bottom: 20px;"></i>
+        <h3>No units found</h3>
+        <button onclick="showAddForm()" class="btn-primary" style="margin-top: 20px;">Add Unit</button>
+    </div>
+    {% endif %}
+</div>
+
+<div id="editModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content card" style="background: var(--glass-blue); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 12px; padding: 30px; width: 90%; max-width: 600px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 15px;">
+            <h3 style="color: var(--electric-cyan); margin: 0;">Edit Unit</h3>
+            <span class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('editModal').style.display='none'; return false;">&times;</span>
+        </div>
+        <form id="editForm" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+            <div class="form-group">
+                <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Unit Name *</label>
+                <input type="text" id="editName" name="unit_name" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+            </div>
+            <div class="form-group">
+                <label style="color: var(--electric-cyan); font-weight: 600; display: block; margin-bottom: 8px;">Abbreviation</label>
+                <input type="text" id="editAbbreviation" name="abbreviation" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--cobalt-blue); color: white; border-radius: 6px;">
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                <button type="button" class="btn-secondary" onclick="document.getElementById('editModal').style.display='none'; return false;">Cancel</button>
+                <button type="submit" class="btn-primary">Update Unit</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+    <div class="modal-content card" style="background: var(--glass-blue); border: 2px solid #ff4d4d; border-radius: 12px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 77, 77, 0.2); padding-bottom: 15px;">
+            <h3 style="color: #ff4d4d; margin: 0;">Confirm Delete</h3>
+            <span class="modal-close" style="background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('deleteModal').style.display='none'; return false;">&times;</span>
+        </div>
+        <div class="modal-body" style="margin-bottom: 25px;">
+            <p style="color: var(--text-main); margin-bottom: 10px;">Are you sure you want to delete unit "<span id="deleteUnitName" style="font-weight: bold; color: var(--electric-cyan);"></span>"?</p>
+            <p id="productWarning" style="color: #ff4d4d; font-size: 0.9rem; display: none; margin-top: 10px; padding: 10px; background: rgba(255, 77, 77, 0.1); border-radius: 4px;"><i class='bx bx-error-circle'></i> Warning: This unit is used by <span id="productCount"></span> products.</p>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 15px; border-top: 1px solid rgba(255, 77, 77, 0.2);">
+            <button type="button" class="btn-secondary" onclick="document.getElementById('deleteModal').style.display='none'; return false;">Cancel</button>
+            <form id="deleteForm" method="POST" style="margin: 0;">
+                <button type="submit" class="btn-danger" style="background: #ff4d4d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Delete Unit</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showAddForm() {
+    document.getElementById('addForm').style.display = 'block';
+    document.getElementById('unit_name').focus();
+}
+
+function hideAddForm() {
+    document.getElementById('addForm').style.display = 'none';
+}
+
+function editUnit(id, name, abbreviation) {
+    const modal = document.getElementById('editModal');
+    const form = document.getElementById('editForm');
+    
+    // Set field values
+    document.getElementById('editName').value = name;
+    document.getElementById('editAbbreviation').value = abbreviation;
+    
+    // Set form action URL
+    form.action = `/units/edit/${id}`;
+    
+    modal.style.display = 'flex';
+}
+
+function deleteUnit(id, name, productCount) {
+    const modal = document.getElementById('deleteModal');
+    document.getElementById('deleteUnitName').textContent = name;
+    document.getElementById('deleteForm').action = `/units/delete/${id}`;
+
+    const warning = document.getElementById('productWarning');
+    const countSpan = document.getElementById('productCount');
+
+    if (productCount > 0) {
+        warning.style.display = 'block';
+        countSpan.textContent = productCount;
+    } else {
+        warning.style.display = 'none';
+    }
+
+    modal.style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Setup modal close buttons - close only their parent modal
+    const editModalClose = document.querySelectorAll('#editModal .modal-close');
+    editModalClose.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('editModal').style.display = 'none';
+        });
+    });
+
+    const deleteModalClose = document.querySelectorAll('#deleteModal .modal-close');
+    deleteModalClose.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('deleteModal').style.display = 'none';
+        });
+    });
+
+    // Close modals when clicking outside on the background
+    const editModal = document.getElementById('editModal');
+    const deleteModal = document.getElementById('deleteModal');
+
+    editModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    deleteModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    // Prevent clicks inside modal content from closing the modal
+    const editModalContent = editModal.querySelector('.modal-content');
+    const deleteModalContent = deleteModal.querySelector('.modal-content');
+
+    if (editModalContent) {
+        editModalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+
+    if (deleteModalContent) {
+        deleteModalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+});
+</script>
+{% endblock %}
