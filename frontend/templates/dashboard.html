@@ -139,4 +139,73 @@
         </a>
     </div>
 </div>
+
+<script>
+    // Mark alert as read
+    function markAlertRead(alertId) {
+        fetch(`/api/alerts/mark-read/${alertId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the alert from the UI
+                const alertItem = document.querySelector(`[data-alert-id="${alertId}"]`);
+                if (alertItem) {
+                    alertItem.style.animation = 'slideOut 0.3s ease-out';
+                    setTimeout(() => {
+                        alertItem.remove();
+                        // Update alert count
+                        updateAlertCount();
+                    }, 300);
+                }
+            }
+        })
+        .catch(error => console.error('Error marking alert as read:', error));
+    }
+    
+    // Update alert count in real-time
+    function updateAlertCount() {
+        fetch('/api/alerts/summary')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const alertCard = document.querySelector('.alert-card .stat-value');
+                    if (alertCard) {
+                        alertCard.textContent = data.data.critical || 0;
+                    }
+                }
+            })
+            .catch(error => console.error('Error updating alert count:', error));
+    }
+    
+    // Auto-refresh alerts every 2 minutes
+    document.addEventListener('DOMContentLoaded', function() {
+        setInterval(updateAlertCount, 120000);
+    });
+    
+    // Add animation CSS
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(500px);
+                opacity: 0;
+            }
+        }
+        
+        .alert-item {
+            transition: all 0.3s ease;
+        }
+    `;
+    document.head.appendChild(style);
+</script>
+
 {% endblock %}

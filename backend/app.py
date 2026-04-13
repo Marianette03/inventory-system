@@ -10,6 +10,14 @@ from functools import wraps
 import random
 import string
 import re
+import sys
+
+# Add backend directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from analytics import InventoryAnalytics
+from predictions import PredictiveAnalytics
+from alerts import RealtimeAlertSystem
 
 # Demo mode setup - DEFAULT TO TRUE (works without MySQL)
 DEMO_MODE = os.environ.get('DEMO_MODE', 'true').lower() == 'true'
@@ -1179,12 +1187,35 @@ def reports():
                     'category_name': cat_name
                 })
 
-        # Demo stock movements (mock data)
-        stock_movements = [
-            {'date': '2024-01-15', 'movement_type': 'in', 'total_quantity': 50, 'movements': 3},
-            {'date': '2024-01-14', 'movement_type': 'out', 'total_quantity': 25, 'movements': 2},
-            {'date': '2024-01-13', 'movement_type': 'in', 'total_quantity': 30, 'movements': 1},
-        ]
+        # Demo stock movements - separate stock_in and stock_out by date
+        stock_movements = []
+        date_movements = {}
+        
+        for movement in demo_data['stock_movements']:
+            date_key = movement['created_at'].strftime('%Y-%m-%d')
+            if date_key not in date_movements:
+                date_movements[date_key] = {'month': date_key, 'stock_in': 0, 'stock_out': 0, 'movements': 0}
+            
+            if movement['movement_type'] == 'in':
+                date_movements[date_key]['stock_in'] += abs(movement['quantity'])
+            else:
+                date_movements[date_key]['stock_out'] += abs(movement['quantity'])
+            date_movements[date_key]['movements'] += 1
+        
+        # Add demo data if no movements exist
+        if not date_movements:
+            now = datetime.now()
+            date_movements = {
+                (now - timedelta(days=i)).strftime('%Y-%m-%d'): {
+                    'month': (now - timedelta(days=i)).strftime('%Y-%m-%d'),
+                    'stock_in': 50 - i*5,
+                    'stock_out': 25 - i*2,
+                    'movements': 3 + i
+                } for i in range(5)
+            }
+        
+        stock_movements = list(date_movements.values())
+        stock_movements.sort(key=lambda x: x['month'], reverse=True)
 
         return render_template('reports.html',
                              inventory_value=inventory_value,
@@ -1220,14 +1251,16 @@ def reports():
     """)
     low_stock = cursor.fetchall()
 
-    # Get stock movement report (last 30 days)
+    # Get stock movement report (last 30 days) - separate inbound and outbound
     cursor.execute("""
-        SELECT DATE(sm.created_at) as date, sm.movement_type,
-               SUM(ABS(sm.quantity)) as total_quantity, COUNT(*) as movements
+        SELECT DATE(sm.created_at) as month,
+               SUM(CASE WHEN sm.movement_type = 'in' THEN ABS(sm.quantity) ELSE 0 END) as stock_in,
+               SUM(CASE WHEN sm.movement_type IN ('out', 'adjustment') THEN ABS(sm.quantity) ELSE 0 END) as stock_out,
+               COUNT(*) as movements
         FROM stock_movements sm
         WHERE sm.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        GROUP BY DATE(sm.created_at), sm.movement_type
-        ORDER BY date DESC
+        GROUP BY DATE(sm.created_at)
+        ORDER BY month DESC
     """)
     stock_movements = cursor.fetchall()
 
@@ -1392,6 +1425,614 @@ def export_inventory():
         mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=inventory_export.csv'}
     )
+
+# ==================== REAL-TIME ANALYTICS API ENDPOINTS ====================
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    """Main analytics dashboard page"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    dashboard_summary = analytics_engine.get_dashboard_summary()
+    trends = analytics_engine.get_trends(30)
+    
+    return render_template('analytics.html',
+                         **dashboard_summary,
+                         trends=json.dumps(trends))
+
+@app.route('/api/analytics/kpis')
+@login_required
+def api_kpis():
+    """Get all KPIs in real-time"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    kpis = analytics_engine.get_kpis()
+    return jsonify({
+        'success': True,
+        'data': kpis,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/trends')
+@login_required
+def api_trends():
+    """Get inventory trends"""
+    days = request.args.get('days', 30, type=int)
+    
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    trends = analytics_engine.get_trends(days)
+    return jsonify({
+        'success': True,
+        'data': trends,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/categories')
+@login_required
+def api_category_analytics():
+    """Get category-wise analytics"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    categories = analytics_engine.get_category_analytics()
+    
+    # Convert to list of dicts for JSON serialization
+    categories_list = []
+    for cat in categories:
+        categories_list.append({
+            'id': cat['id'],
+            'category_name': cat['category_name'],
+            'product_count': cat['product_count'],
+            'total_quantity': cat['total_quantity'],
+            'total_value': float(cat['total_value'] or 0),
+            'total_selling_value': float(cat['total_selling_value'] or 0),
+            'avg_cost': float(cat['avg_cost'] or 0),
+            'avg_selling': float(cat['avg_selling'] or 0),
+            'min_quantity': cat['min_quantity'],
+            'max_quantity': cat['max_quantity'],
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': categories_list,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/suppliers')
+@login_required
+def api_supplier_analytics():
+    """Get supplier-wise analytics"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    suppliers = analytics_engine.get_supplier_analytics()
+    
+    # Convert to list of dicts for JSON serialization
+    suppliers_list = []
+    for sup in suppliers:
+        suppliers_list.append({
+            'id': sup['id'],
+            'supplier_name': sup['supplier_name'],
+            'product_count': sup['product_count'],
+            'total_quantity': sup['total_quantity'],
+            'total_value': float(sup['total_value'] or 0),
+            'avg_cost': float(sup['avg_cost'] or 0),
+            'total_shipments': sup['total_shipments'],
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': suppliers_list,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/top-products')
+@login_required
+def api_top_products():
+    """Get top products by various metrics"""
+    metric = request.args.get('metric', 'value')
+    limit = request.args.get('limit', 10, type=int)
+    
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    products = analytics_engine.get_top_products(limit, metric)
+    
+    # Convert to list of dicts for JSON serialization
+    products_list = []
+    for prod in products:
+        products_list.append({
+            'id': prod['id'],
+            'name': prod['name'],
+            'sku': prod['sku'],
+            'quantity': prod['quantity'],
+            'cost_price': float(prod['cost_price']),
+            'selling_price': float(prod['selling_price']),
+            'category_name': prod.get('category_name', 'N/A'),
+            'total_value': float(prod.get('total_value', 0)),
+            'profit_margin': float(prod.get('profit_margin', 0)),
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': products_list,
+        'metric': metric,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/profit-analysis')
+@login_required
+def api_profit_analysis():
+    """Get profit and margin analysis"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    profit_data = analytics_engine.get_profit_analysis()
+    return jsonify({
+        'success': True,
+        'data': {
+            'total_cost': float(profit_data['total_cost']),
+            'total_selling_value': float(profit_data['total_selling_value']),
+            'total_profit': float(profit_data['total_profit']),
+            'avg_margin_percent': float(profit_data['avg_margin_percent']),
+            'profit_margin': float(profit_data['profit_margin']),
+        },
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/alerts')
+@login_required
+def api_get_alerts():
+    """Get critical alerts in real-time"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    alerts = analytics_engine.get_critical_alerts()
+    
+    # Convert to list of dicts for JSON serialization
+    alerts_list = []
+    for alert in alerts:
+        alerts_list.append({
+            'id': alert['id'],
+            'name': alert['name'],
+            'alert_type': alert['alert_type'],
+            'message': alert['message'],
+            'quantity': alert.get('quantity', 0),
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': alerts_list,
+        'alert_count': len(alerts_list),
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/dashboard-summary')
+@login_required
+def api_dashboard_summary():
+    """Get complete dashboard summary"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    summary = analytics_engine.get_dashboard_summary()
+    
+    # Helper function to convert Decimal to float
+    def convert_decimals(obj):
+        if isinstance(obj, dict):
+            return {k: convert_decimals(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [convert_decimals(item) for item in obj]
+        elif hasattr(obj, '__float__'):
+            return float(obj)
+        else:
+            return obj
+    
+    summary = convert_decimals(summary)
+    
+    return jsonify({
+        'success': True,
+        'data': summary,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/analytics/export-report')
+@login_required
+def api_export_analytics_report():
+    """Export analytics report as JSON"""
+    if DEMO_MODE:
+        analytics_engine = InventoryAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        analytics_engine = InventoryAnalytics(db_connection=db)
+    
+    # Helper function to convert Decimal to float
+    def convert_decimals(obj):
+        if isinstance(obj, dict):
+            return {k: convert_decimals(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [convert_decimals(item) for item in obj]
+        elif hasattr(obj, '__float__'):
+            return float(obj)
+        else:
+            return obj
+    
+    report_data = {
+        'kpis': analytics_engine.get_kpis(),
+        'trends': analytics_engine.get_trends(30),
+        'category_analytics': analytics_engine.get_category_analytics(),
+        'supplier_analytics': analytics_engine.get_supplier_analytics(),
+        'top_products': analytics_engine.get_top_products(limit=10),
+        'profit_analysis': analytics_engine.get_profit_analysis(),
+        'critical_alerts': analytics_engine.get_critical_alerts(),
+        'export_date': datetime.now().isoformat(),
+    }
+    
+    report_data = convert_decimals(report_data)
+    
+    return jsonify(report_data)
+
+# ==================== PREDICTIVE ANALYTICS API ENDPOINTS ====================
+
+@app.route('/api/predictions/demand-forecast/<int:product_id>')
+@login_required
+def api_demand_forecast(product_id):
+    """Get demand forecast for a product"""
+    days = request.args.get('days', 30, type=int)
+    
+    if DEMO_MODE:
+        predictor = PredictiveAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        predictor = PredictiveAnalytics(db_connection=db)
+    
+    forecast_data = predictor.forecast_demand(product_id, days)
+    
+    if forecast_data:
+        return jsonify({
+            'success': True,
+            'data': forecast_data,
+            'timestamp': datetime.now().isoformat()
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Product not found'
+        }), 404
+
+@app.route('/api/predictions/reorder-point/<int:product_id>')
+@login_required
+def api_reorder_point(product_id):
+    """Get reorder point calculation for a product"""
+    if DEMO_MODE:
+        predictor = PredictiveAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        predictor = PredictiveAnalytics(db_connection=db)
+    
+    reorder_data = predictor.calculate_reorder_point(product_id)
+    
+    if reorder_data:
+        return jsonify({
+            'success': True,
+            'data': reorder_data,
+            'timestamp': datetime.now().isoformat()
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Product not found'
+        }), 404
+
+@app.route('/api/predictions/expiry-impact')
+@login_required
+def api_expiry_impact():
+    """Get expiry impact predictions"""
+    if DEMO_MODE:
+        predictor = PredictiveAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        predictor = PredictiveAnalytics(db_connection=db)
+    
+    expiry_data = predictor.predict_expiry_impact()
+    return jsonify({
+        'success': True,
+        'data': expiry_data,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/predictions/seasonal-patterns')
+@login_required
+def api_seasonal_patterns():
+    """Get seasonal pattern analysis"""
+    product_id = request.args.get('product_id', type=int)
+    
+    if DEMO_MODE:
+        predictor = PredictiveAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        predictor = PredictiveAnalytics(db_connection=db)
+    
+    patterns = predictor.analyze_seasonal_patterns(product_id)
+    return jsonify({
+        'success': True,
+        'data': patterns,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/predictions/all')
+@login_required
+def api_all_predictions():
+    """Get comprehensive prediction report"""
+    if DEMO_MODE:
+        predictor = PredictiveAnalytics(demo_data=demo_data)
+    else:
+        db = get_db()
+        predictor = PredictiveAnalytics(db_connection=db)
+    
+    predictions = predictor.get_all_predictions()
+    return jsonify({
+        'success': True,
+        'data': predictions,
+        'timestamp': datetime.now().isoformat()
+    })
+
+# ==================== REAL-TIME ALERT API ENDPOINTS ====================
+
+@app.route('/api/alerts/all')
+@login_required
+def api_get_all_alerts():
+    """Get all active alerts in real-time"""
+    if DEMO_MODE:
+        alert_system = RealtimeAlertSystem(demo_data=demo_data)
+    else:
+        db = get_db()
+        alert_system = RealtimeAlertSystem(db_connection=db)
+    
+    alerts = alert_system.get_all_alerts()
+    return jsonify({
+        'success': True,
+        'data': alerts,
+        'count': len(alerts),
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/alerts/critical')
+@login_required
+def api_get_critical_alerts():
+    """Get only critical alerts"""
+    if DEMO_MODE:
+        alert_system = RealtimeAlertSystem(demo_data=demo_data)
+    else:
+        db = get_db()
+        alert_system = RealtimeAlertSystem(db_connection=db)
+    
+    alerts = alert_system.get_critical_alerts()
+    return jsonify({
+        'success': True,
+        'data': alerts,
+        'count': len(alerts),
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/alerts/summary')
+@login_required
+def api_alerts_summary():
+    """Get alerts summary"""
+    if DEMO_MODE:
+        alert_system = RealtimeAlertSystem(demo_data=demo_data)
+    else:
+        db = get_db()
+        alert_system = RealtimeAlertSystem(db_connection=db)
+    
+    summary = alert_system.get_alert_summary()
+    return jsonify({
+        'success': True,
+        'data': summary,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/alerts/check-stock')
+@login_required
+def api_check_stock_alerts():
+    """Check stock level alerts"""
+    if DEMO_MODE:
+        alert_system = RealtimeAlertSystem(demo_data=demo_data)
+    else:
+        db = get_db()
+        alert_system = RealtimeAlertSystem(db_connection=db)
+    
+    alerts = alert_system.check_stock_levels()
+    return jsonify({
+        'success': True,
+        'data': alerts,
+        'count': len(alerts),
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/alerts/check-expiry')
+@login_required
+def api_check_expiry_alerts():
+    """Check expiry alerts"""
+    if DEMO_MODE:
+        alert_system = RealtimeAlertSystem(demo_data=demo_data)
+    else:
+        db = get_db()
+        alert_system = RealtimeAlertSystem(db_connection=db)
+    
+    alerts = alert_system.check_expiry_alerts()
+    return jsonify({
+        'success': True,
+        'data': alerts,
+        'count': len(alerts),
+        'timestamp': datetime.now().isoformat()
+    })
+
+# ==================== ACTIVITY & RECENT ACTIONS API ====================
+
+@app.route('/api/activity/recent')
+@login_required
+def api_recent_activity():
+    """Get recent stock movements and activity"""
+    limit = request.args.get('limit', 10, type=int)
+    
+    if DEMO_MODE:
+        # Demo mode: return recent stock movements
+        recent_activities = demo_data['stock_movements'][-limit:] if demo_data['stock_movements'] else []
+        
+        # Format for API response
+        activities = []
+        for activity in reversed(recent_activities):
+            activities.append({
+                'product_id': activity.get('product_id', 0),
+                'product_name': next((p['name'] for p in demo_data['products'] if p['id'] == activity.get('product_id')), 'Unknown'),
+                'movement_type': activity.get('movement_type', 'unknown'),
+                'quantity': activity.get('quantity', 0),
+                'reason': activity.get('reason', 'Stock adjustment'),
+                'timestamp': activity.get('created_at', datetime.now()).isoformat() if isinstance(activity.get('created_at'), datetime) else str(activity.get('created_at')),
+                'created_at': activity.get('created_at')
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': activities,
+            'count': len(activities),
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    cursor.execute("""
+        SELECT sm.*, p.name as product_name
+        FROM stock_movements sm
+        JOIN products p ON sm.product_id = p.id
+        ORDER BY sm.created_at DESC
+        LIMIT %s
+    """, (limit,))
+    
+    activities = cursor.fetchall()
+    db.close()
+    
+    return jsonify({
+        'success': True,
+        'data': activities,
+        'count': len(activities) if activities else 0,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/activity/log', methods=['POST'])
+@login_required
+def api_log_activity():
+    """Log an activity event (for tracking user actions)"""
+    if DEMO_MODE:
+        # In demo mode, just return success
+        return jsonify({
+            'success': True,
+            'message': 'Activity logged (demo mode)'
+        })
+    
+    data = request.get_json()
+    action_type = data.get('action_type', 'unknown')
+    description = data.get('description', '')
+    product_id = data.get('product_id')
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO activity_log (action_type, description, product_id, user_id, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+        """, (action_type, description, product_id, session.get('user_id', 1)))
+        
+        db.commit()
+        return jsonify({
+            'success': True,
+            'message': 'Activity logged successfully'
+        })
+    except Exception as e:
+        db.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error logging activity: {str(e)}'
+        }), 400
+    finally:
+        db.close()
+
+@app.route('/api/activity/stats')
+@login_required
+def api_activity_stats():
+    """Get activity statistics (movements count, etc)"""
+    if DEMO_MODE:
+        stock_movements = demo_data['stock_movements']
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_movements': len(stock_movements),
+                'inbound': len([m for m in stock_movements if m.get('movement_type') == 'in']),
+                'outbound': len([m for m in stock_movements if m.get('movement_type') in ['out', 'adjustment']]),
+                'last_movement': stock_movements[-1].get('created_at').isoformat() if stock_movements else None
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_movements,
+            SUM(CASE WHEN movement_type = 'in' THEN 1 ELSE 0 END) as inbound,
+            SUM(CASE WHEN movement_type IN ('out', 'adjustment') THEN 1 ELSE 0 END) as outbound,
+            MAX(created_at) as last_movement
+        FROM stock_movements
+    """)
+    
+    stats = cursor.fetchone()
+    db.close()
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'total_movements': stats['total_movements'] or 0,
+            'inbound': stats['inbound'] or 0,
+            'outbound': stats['outbound'] or 0,
+            'last_movement': stats['last_movement'].isoformat() if stats['last_movement'] else None
+        },
+        'timestamp': datetime.now().isoformat()
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000, host='0.0.0.0')
